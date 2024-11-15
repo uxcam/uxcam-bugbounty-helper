@@ -22,42 +22,47 @@ cvss_data = load_json(os.path.join("bugcrowd-vrt", vrt_version, "cvss_v3.json"))
 
 
 @st.cache_data
-def find_cvss_vector(item_id, cvss_content):
+def find_cvss_vector_and_priority(item_id, cvss_content, taxonomy_content):
+    # Find CVSS vector
+    cvss_vector = None
     for item in cvss_content:
         if item["id"] == item_id:
-            return item.get("cvss_v3")
-        if "children" in item:
-            result = find_cvss_vector(item_id, item["children"])
-            if result:
-                return result
-    return None
+            cvss_vector = item.get("cvss_v3")
+        elif "children" in item:
+            cvss_vector = find_cvss_vector_and_priority(
+                item_id, item["children"], taxonomy_content
+            )[0]
+        if cvss_vector:
+            break
+
+    # Find priority from taxonomy data
+    priority = None
+    for category in taxonomy_content:
+        for sub in category.get("children", []):
+            if sub["id"] == item_id:
+                priority = sub.get("priority")
+            for variant in sub.get("children", []):
+                if variant["id"] == item_id:
+                    priority = variant.get("priority")
+    return cvss_vector, priority
 
 
-@st.cache_data
-def find_priority(item_id, cvss_content):
-    for item in cvss_content:
-        if item["id"] == item_id:
-            return item.get("cvss_v3")
-        if "children" in item:
-            result = find_cvss_vector(item_id, item["children"])
-            if result:
-                return result
-    return None
+st.title("Bugcrowd VRT <-> CVSS Mapping")
 
+st.write(
+    "This tool helps you find the CVSS v3 vector and VRT priority for a given VRT category, subcategory, or variant."
+)
+st.write("Bugcrowd VRT version: ", vrt_version)
+st.write("---")
 
-st.title("CVSS Vector Viewer")
-
-# Create three columns for categories, subcategories, and variants
 col1, col2, col3 = st.columns(3)
 
-# First column: Category selection
 with col1:
     categories = {cat["id"]: cat["name"] for cat in taxonomy_data["content"]}
     selected_category = st.selectbox(
-        "Select Category", list(categories.keys()), format_func=lambda x: categories[x]
+        "VRT category", list(categories.keys()), format_func=lambda x: categories[x]
     )
 
-# Second column: Subcategory selection if available
 selected_subcategory = None
 subcategories = {}
 if selected_category:
@@ -69,12 +74,11 @@ if selected_category:
 with col2:
     if subcategories:
         selected_subcategory = st.selectbox(
-            "Select Subcategory",
+            "Specific vulnerability name",
             list(subcategories.keys()),
             format_func=lambda x: subcategories[x],
         )
 
-# Third column: Variant selection if available
 selected_variant = None
 variants = {}
 if selected_subcategory:
@@ -82,7 +86,6 @@ if selected_subcategory:
         if sub["id"] == selected_category:
             for child in sub.get("children", []):
                 if child["id"] == selected_subcategory:
-                    # If the subcategory has children (variants), populate variants dict
                     variants = {
                         var["id"]: var["name"] for var in child.get("children", [])
                     }
@@ -91,28 +94,50 @@ if selected_subcategory:
 with col3:
     if variants:
         selected_variant = st.selectbox(
-            "Select Variant", list(variants.keys()), format_func=lambda x: variants[x]
+            "Variant / Affected function",
+            list(variants.keys()),
+            format_func=lambda x: variants[x],
         )
 
-# Determine which ID to use for finding CVSS vector
+# Determine ID to use for finding CVSS vector and VRT priority
 selected_id = selected_variant or selected_subcategory
 
-# Display CVSS vector if available
 if selected_id:
-    cvss_vector = find_cvss_vector(selected_id, cvss_data["content"])
+    cvss_vector, priority = find_cvss_vector_and_priority(
+        selected_id, cvss_data["content"], taxonomy_data["content"]
+    )
+
     with st.container(border=True):
+        st.subheader("CVSS v3 Calculation")
+
         if cvss_vector:
-            st.write("VRT Priority: P1")
-
             cvss = CVSS3("CVSS:3.1/" + cvss_vector)
-            st.write("**CVSS v3 Calculation:**")
-            st.write(f"Vector: {cvss_vector}")
-            st.write(f"Base Score: {cvss.base_score}")
-            st.write(f"Base Severity: {cvss.severities()[0]}")
-
-            st.info(f"{cvss.clean_vector()} ({cvss.base_score})")
+            base_score = cvss.base_score
+            base_severity = cvss.severities()[0]
+            clean_vector = cvss.clean_vector()
         else:
-            st.warning("No CVSS vector available for this selection.")
+            cvss = "N/A"
+            base_score = "N/A"
+            base_severity = "N/A"
+            clean_vector = "N/A"
 
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            priority = f"P{priority}" if priority else "N/A"
+            col1.metric(label="VRT Priority", value=f"{priority}")
+        with col2:
+            col2.metric(label="Base Score", value=f"{base_score}")
+        with col3:
+            col3.metric(label="Base Severity", value=f"{base_severity}")
 
-st.header("Add logic to display priority as well")
+        st.write("Summary")
+        if base_severity == "Critical":
+            st.error(f"{clean_vector} ({base_score})")
+        elif base_severity == "High":
+            st.warning(f"{clean_vector} ({base_score})")
+        elif base_severity == "Medium":
+            st.info(f"{clean_vector} ({base_score})")
+        elif base_severity == "Low":
+            st.success(f"{clean_vector} ({base_score})")
+        else:
+            st.success(f"{clean_vector} ({base_score})")
