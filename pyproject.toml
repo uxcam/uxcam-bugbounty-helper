@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "bugbounty-helper"
+name = "uxcam-bugbounty-helper"
 version = "0.1.0"
-description = ""
+description = "An app to help us map Bugcrowd VRT to CVSS v3 vector/score; used for our bug bounty program."
 authors = ["Prajwol Pradhan <prajwol@uxcam.com>"]
 readme = "README.md"
 
