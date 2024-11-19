@@ -69,7 +69,7 @@ def get_variants(selected_category, selected_subcategory, taxonomy_content):
 
 st.title("Bugcrowd VRT <-> CVSS Mapping")
 st.write(
-    "An app to help us map Bugcrowd VRT to CVSS v3 vector/score. Used for our bug bounty program. Check our program at: https://uxcam.com/bug-bounty."
+    "An app to help us map Bugcrowd VRT to CVSS v3 vector/score; used for our bug bounty program. Check our bug bounty program at: https://uxcam.com/bug-bounty."
 )
 st.markdown(
     f"Bugcrowd VRT version: [{vrt_version}](https://github.com/bugcrowd/vulnerability-rating-taxonomy/releases/tag/{vrt_version})"
